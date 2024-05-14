@@ -1,0 +1,112 @@
+\documentclass[12pt, twoside, english]{report}
+\usepackage{babel}
+\usepackage{csquotes}
+\usepackage{helvet}
+\usepackage{lmodern}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{geometry}
+\usepackage{abstract}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{blindtext}
+\usepackage{hyperref}
+\usepackage{subfig}
+\usepackage{pdfpages}
+
+\usepackage{listings}
+\usepackage{color}
+\usepackage[dvipsnames]{xcolor}
+%\lstloadlanguages{C,C++,csh,Java}
+
+\definecolor{red}{rgb}{0.6,0,0} 
+\definecolor{blue}{rgb}{0,0,0.6}
+\definecolor{green}{rgb}{0,0.6,0}
+\definecolor{cyan}{rgb}{0.0,0.6,0.6}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.96}
+
+\lstset%
+{%
+    emph=[1]%
+    {%
+        Dictionary, string, var, function,
+        async, signInWithEmailAndPassword, localStorage, querySnapshot, query, width, padding, margin, margin-bottom, border, background-color, border, box, outline,  margin-left, margin-top, webRequest, Stream, Encoding, Console, StreamReader, WebRequest, HttpWebRequest, SignInContainer, IconWrap, Icon, SignInContent, SignInForm, FormH1, LoginForm, FormGroup, FormLabel, FormInput, FormButton, Text, ImgWrapper, background-color, shadow, bottom, left, top, -, background, color, req, db, collection, stringify, await, res, doc, set, JsonConvert, JsonSerializerSettings, ReferenceLoopHandling, NullValueHandling, NodeJSON, JSONAttribute, IEnumerable, Children, Parent, TryGetValue
+    },
+    emphstyle=[1]{\color{cyan}},
+}
+
+\lstset{
+language=csh,
+basicstyle=\footnotesize\ttfamily,
+numbers=left,
+numberstyle=\tiny,
+numbersep=5pt,
+tabsize=2,
+extendedchars=true,
+breaklines=true,
+stringstyle=\color{green}\ttfamily,
+showspaces=false,
+showtabs=false,
+xleftmargin=17pt,
+framexleftmargin=17pt,
+framexrightmargin=5pt,
+framexbottommargin=4pt,
+commentstyle=\color{green},
+morecomment=[l]{//}, %use comment-line-style!
+morecomment=[s]{/*}{*/}, %for multiline comments
+showstringspaces=false,
+keywordstyle=\color{blue},
+identifierstyle=\color{black},
+backgroundcolor=\color{white}
+}
+
+\definecolor{lightgray}{rgb}{.9,.9,.9}
+\definecolor{darkgray}{rgb}{.4,.4,.4}
+\definecolor{purple}{rgb}{0.65, 0.12, 0.82}
+
+\lstdefinelanguage{JavaScript}{
+  keywords={typeof, new, true, false, catch, function, return, null, catch, switch, var, if, in, while, do, else, case, break, async, signInWithEmailAndPassword, localStorage },
+  keywordstyle=\color{blue}\bfseries,
+  ndkeywords={class, export, boolean, throw, implements, import, this},
+  ndkeywordstyle=\color{darkgray}\bfseries,
+  identifierstyle=\color{black},
+  sensitive=false,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{purple}\ttfamily,
+  stringstyle=\color{red}\ttfamily,
+  morestring=[b]',
+  morestring=[b]"
+}
+
+\usepackage[style=ieee]{biblatex}
+
+\addbibresource{bibliography.bib}
+
+\include{customs}
+\include{components/Format}
+\include{components/Styles}
+
+\begin{document}
+\setcounter{page}{1}
+\include{chapters/1 - Title}
+\newpage
+\include{chapters/2 - Abstract}
+\tableofcontents
+
+\include{chapters/3 - Introduction}
+\include{chapters/4 - StateOfTheArt}
+\include{chapters/5 - Technologies}
+\include{chapters/6 - ApplicationStructure}
+\include{chapters/7 - Implementation}
+\include{chapters/8 - UsageScenarios}
+\include{chapters/9 - Conclusions}
+
+
+% Look for building the .bib file on Overleaf documentation
+\printbibliography
+\thispagestyle{pagestyle}
+
+\end{document}
