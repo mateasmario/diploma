@@ -15,11 +15,10 @@
 \usepackage{hyperref}
 \usepackage{subfig}
 \usepackage{pdfpages}
+\usepackage{amssymb}
 
 \usepackage{listings}
 \usepackage{color}
-\usepackage[dvipsnames]{xcolor}
-%\lstloadlanguages{C,C++,csh,Java}
 
 \definecolor{red}{rgb}{0.6,0,0} 
 \definecolor{blue}{rgb}{0,0,0.6}
@@ -27,62 +26,52 @@
 \definecolor{cyan}{rgb}{0.0,0.6,0.6}
 \definecolor{backcolour}{rgb}{0.95,0.95,0.96}
 
-\lstset%
-{%
-    emph=[1]%
-    {%
-        Dictionary, string, var, function,
-        async, signInWithEmailAndPassword, localStorage, querySnapshot, query, width, padding, margin, margin-bottom, border, background-color, border, box, outline,  margin-left, margin-top, webRequest, Stream, Encoding, Console, StreamReader, WebRequest, HttpWebRequest, SignInContainer, IconWrap, Icon, SignInContent, SignInForm, FormH1, LoginForm, FormGroup, FormLabel, FormInput, FormButton, Text, ImgWrapper, background-color, shadow, bottom, left, top, -, background, color, req, db, collection, stringify, await, res, doc, set, JsonConvert, JsonSerializerSettings, ReferenceLoopHandling, NullValueHandling, NodeJSON, JSONAttribute, IEnumerable, Children, Parent, TryGetValue
-    },
-    emphstyle=[1]{\color{cyan}},
-}
-
-\lstset{
-language=csh,
-basicstyle=\footnotesize\ttfamily,
-numbers=left,
-numberstyle=\tiny,
-numbersep=5pt,
-tabsize=2,
-extendedchars=true,
-breaklines=true,
-stringstyle=\color{green}\ttfamily,
-showspaces=false,
-showtabs=false,
-xleftmargin=17pt,
-framexleftmargin=17pt,
-framexrightmargin=5pt,
-framexbottommargin=4pt,
-commentstyle=\color{green},
-morecomment=[l]{//}, %use comment-line-style!
-morecomment=[s]{/*}{*/}, %for multiline comments
-showstringspaces=false,
-keywordstyle=\color{blue},
-identifierstyle=\color{black},
-backgroundcolor=\color{white}
-}
-
 \definecolor{lightgray}{rgb}{.9,.9,.9}
 \definecolor{darkgray}{rgb}{.4,.4,.4}
 \definecolor{purple}{rgb}{0.65, 0.12, 0.82}
 
-\lstdefinelanguage{JavaScript}{
-  keywords={typeof, new, true, false, catch, function, return, null, catch, switch, var, if, in, while, do, else, case, break, async, signInWithEmailAndPassword, localStorage },
-  keywordstyle=\color{blue}\bfseries,
-  ndkeywords={class, export, boolean, throw, implements, import, this},
-  ndkeywordstyle=\color{darkgray}\bfseries,
-  identifierstyle=\color{black},
-  sensitive=false,
-  comment=[l]{//},
-  morecomment=[s]{/*}{*/},
-  commentstyle=\color{purple}\ttfamily,
-  stringstyle=\color{red}\ttfamily,
-  morestring=[b]',
-  morestring=[b]"
+\lstset{frame=tb,
+  aboveskip=3mm,
+  belowskip=3mm,
+  showstringspaces=false,
+  columns=flexible,
+  basicstyle={\small\ttfamily},
+  numbers=none,
+  numberstyle=\tiny\color{orange},
+  keywordstyle=\color{red},
+  stringstyle=\color{green},
+  commentstyle=\color{gray},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=3
 }
 
-\usepackage[style=ieee]{biblatex}
+\lstdefinelanguage{json}{
+    basicstyle=\ttfamily,
+    morestring=[b]",
+    morecomment=[l]{:},
+    literate=
+     *{0}{{{\color{orange}0}}}{1}
+      {1}{{{\color{orange}1}}}{1}
+      {2}{{{\color{orange}2}}}{1}
+      {3}{{{\color{orange}3}}}{1}
+      {4}{{{\color{orange}4}}}{1}
+      {5}{{{\color{orange}5}}}{1}
+      {6}{{{\color{orange}6}}}{1}
+      {7}{{{\color{orange}7}}}{1}
+      {8}{{{\color{orange}8}}}{1}
+      {9}{{{\color{orange}9}}}{1}
+      {:}{{{\color{red}:}}}{1}
+      {,}{{{\color{red},}}}{1}
+      {\{}{{{\color{blue}\{}}}{1}
+      {\}}{{{\color{blue}\}}}}{1}
+      {[}{{{\color{blue}[}}}{1}
+      {]}{{{\color{blue}]}}}{1},
+}
 
+\usepackage{float}
+
+\usepackage[style=ieee]{biblatex}
 \addbibresource{bibliography.bib}
 
 \include{customs}
