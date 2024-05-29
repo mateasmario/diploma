@@ -62,7 +62,47 @@ Whenever the user does a change in the configuration of the application, a JSON 
 Newtonsoft.Json is used to deserialize (read) JSON files into internal configuration objects and to serialize (write) these objects back into JSON files in an efficient manner, without introducing any noticeable temporal overhead.
 
 \subsection{Integrating the code editing functionality with Scintilla}
+
+The most used control, the actual code editor, is an instance of ScintillaNET \cite{scintillanet}, a C\# wrapper implemented over the famous Scintilla \cite{scintilla}, also used by Notepad++ and Code::Blocks.
+
+Scintilla is an advanced code editing component that can be customized up to anyone's preferences, providing syntax highlighting, code folding, line numbering and code breakpoints. It was developed and released by Neil Hodgson in 1999 and it is still being maintained to this day. 
+
+ScintillaNET provides a better and easier way to integrate Scintilla inside .NET applications, being fully intended for the Windows Forms platform. This aspect can be used as a solid argument to justify my decision of using WinForms as Pie's GUI framework. Several pre-defined Scintilla lexers were already integrated inside the library (e.g. C, Python, Lua), and I have additionally included code from other open-source lexers. Syntax highlighting for languages similar to C, such as Java, use the pre-defined C lexer, but I have modified the list of keywords, based on official documentation found online \cite{java-keywords}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\textwidth]{images/scite.png}
+\caption{Scintilla's syntax highlighting capabilities in the SciTE editor}
+\label{fig:fig2,1.}
+\end{figure}
+
+Syntax highlighting may not be enough for some developers, and with this in mind, I have also integrated autocomplete functionality for the languages supported by Pie. This has been made possible through the AutoCompleteMenu-ScintillaNET \cite{autocompletemenu} library. It suggests autocomplete for the keywords of a specific language, identified by the extension of the opened file.
+
 \subsection{Terminal instance management using ConEmu}
+
+Pie allows users to manage an unlimited number of terminal instances during their working session. At this moment, developers are only able to automatically launch Command Prompt or PowerShell processes, but navigating through other terminals (such as bash) is possible through the command line. Output of custom builds is also redirected to an integrated terminal instance, with a new window created every time the user clicks on a saved build command.
+
+This functionality was made possible by adding the ConEmu Inside \cite{conemu-inside} package, an extension of the popular ConEmu \cite{conemu} terminal for Windows. ConEmu is a free open-source terminal emulator launched in 2007, that was initially intended as a companion to a mature file manager for Windows. It sparked interest two decades ago with its capability to bypass several standard Windows console host features, being still used to this day.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.8\textwidth]{images/ConEmu-Maximus5.png}
+\caption{Graphical User Interface (GUI) of the ConEmu terminal}
+\label{fig:fig2,1.}
+\end{figure}
+
 \subsection{Using CefSharp and Markdig for rendering code inside web browsers}
+
+Pie provides a rendering functionality that displays HTML code in a web browser window, integrated directly inside the application. Although Microsoft's native web browser API for WinForms is able to receive HTML code and render it, it isn't updated regularly and doesn't handle JavaScript well. The engine used for .NET's WebBrowser control is based on the old Internet Explorer. For this purpose, I have used CefSharp \cite{cefsharp}, a C\# wrapper over the Chromium framework, that allows an efficient way of operating on web pages, thanks to its multithreaded implementation \cite{mohamed2022performance}.
+
+I have also provided Markdown rendering support, as it continues to become more popular during the years. Due to CefSharp not being able to directly render Markdown code inside a web browser instance, the code is being first converted to HTML, and then it continues with the process detailed above. Converting Markdown code to HTML was made possible through the Markdig \cite{markdig} library.
+
 \subsection{Managing Git repositories with LibGit2}
+
+Git repository management has been added to Pie in order to offer developers a way to backup their files \cite{git} and keep track of all the changes related to their projects. Users can also push their local repositories to remote locations, in order to ensure that data is never lost, in case of an unfortunate event. Even if Pie's main focus is simplicity, integrating (local + remote) Git support is an essential feature, services like GitHub being used heavily nowadays \cite{github-usage}.
+
+Pie has been programmed initially to use the user's local installation of Git. However, I soon decided to switch to LibGit2Sharp \cite{libgit2sharp}, a C\# implementation of libgit2 \cite{libgit2}, that allowed me to better handle repository metadata and provide Pie with a pre-installed VCS management tool. Users don't need to install Git separately anymore. Pie saved them 3 minutes of their life, which now can be spent on debugging.
+
 \subsection{Querying databases with various SQL drivers}
+
+Pie's persistence layer is implemented through various database drivers, all wrapped over layers that suit C\# applications well. At this moment, Pie supports three types of relational databases: MySQL, Microsoft SQL and PostgreSQL. User-submitted queries are processed by either mysql-connector-net \cite{mysql-driver}, Microsoft's vanilla SQL driver, or the Npgsql \cite{npgsql-driver} library. This depends on the RDBMS (relational database management system) picked by the user during the connection setup phase.
