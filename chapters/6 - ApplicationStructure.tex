@@ -97,3 +97,16 @@ The "Resources" folder doesn't contain any source files or classes, but keeps ic
 \subsection{Event handlers in Form classes}
 
 Pie's code mostly relies on event handling logic. Controls can also be inserted dynamically during the program's flow, besides dragging and dropping them from the toolbox. Based on events such as key presses or mouse clicks, controls are inserted, removed, shown, hidden or repositioned at runtime.
+
+\begin{lstlisting}[language=csharp, caption={Example of a C\# event handler}]
+private void button_Click(object sender, EventArgs e)
+{
+    // Do something here
+}
+\end{lstlisting}
+
+Usually, Pie listens for button presses. Whenever the user picks something from the docked menu, a listener corresponding to the clicked menu item is triggered, which itself moves the action to a certain service. Services can either show/hide certain controls in the editor (such as the Find\&Replace panel or the terminal tab control), open an interface in a new tab (e.g. the repository view), or display a new form, if the interface is too complex. Services also toggle certain flags on button click, such as the autocomplete and autosave options. They also allow users to switch between themes, by navigating to the "Interface" menu.
+
+Key presses are mostly caught in order to simplify the show/hide capabilities described in the previous paragraph. They are used to access certain interface components faster. For example, the terminal tab control can be displayed either by navigating to the main menu strip, or by simply pressing the Ctrl + B key combination. The same can be applied to the Find\&Replace dialog, that can be accessed with Ctrl + F.
+
+Other key press events are handled by the Scintilla editor. For example, Ctrl + D duplicates the selected line. Some additional functionality that was considered useful has been implemented manually, being not provided by ScintillaNET. This includes the Ctrl + X combination, which cuts an entire line, when no characters are selected. Ctrl + C does the same for a selected line, but it doesn't delete it, it just adds its content to the clipboard.
