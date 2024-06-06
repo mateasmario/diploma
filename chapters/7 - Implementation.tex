@@ -1,6 +1,770 @@
 \chapter{Implementation}
 \thispagestyle{pagestyle}
 
-The following section will present the implementation of Pie's most important aspects, including handling of configuration files, applying color palettes to WinForms controls, tab management for the code editor and terminal instances, syntax highlighting for various languages, directory navigation logic, Find\&Replace logic with ScintillaNET's API, database connection handling, using LibGit2Sharp to manage repositories and text formatting algorithms. It will also display code snippets, along with screenshots of the application and paragraphs with additional explanation.
+The following section will present the implementation of Pie's most important aspects, including handling of configuration files, applying color palettes to WinForms controls, tab management for the code editor and terminal instances, syntax highlighting for various languages, database connection handling, using LibGit2Sharp to manage repositories and text formatting algorithms. It will also display code snippets, along with screenshots of the application and paragraphs with additional explanation.
 
 \section{JSON-based configuration in Pie}
+
+User-defined configuration is defined in JSON-formatted files that get stored in the "config" directory, relative to the executable's root folder. The main window of the application (file "MainForm.cs") loads the configuration data internally through the form's constructor, meaning that the processing is done when the application becomes visible on the screen.
+
+The code below displays a part of the \texttt{ProcessBuildCommands()} method, that is first called in \texttt{MainForm}'s constructor.
+
+\begin{lstlisting}[language=csharp, caption={Build command processing logic in MainForm's constructor}]
+try
+{
+    Globals.buildCommands = BuildCommandService.GetBuildCommandsFromFile("config/build.json");
+
+    // Add processed build commands to the top menu strip
+}
+catch (FileNotFoundException ex)
+{
+    File.WriteAllText(AppDomain.CurrentDomain.BaseDirectory + "config/build.json", "[]");
+}
+
+\end{lstlisting}
+
+Commands are going to be extracted from the \texttt{config/build.json} file if and only if the file exists. If the file was accidentally deleted, an empty JSON file is created, in order to avoid later errors. This is a better error management logic than simply displaying an error message specifying that a file is missing. Such messages will make the user want to reinstall the product, as they may not be aware of the structure or content of the missing file. The commands get saved in a global \texttt{List} that will be accessed from multiple classes (forms, services, etc.).
+
+The \texttt{BuildCommandService.GetBuildCommandsFromFile()} methods's logic is presented in the following snippet:
+
+\begin{lstlisting}[language=csharp, caption={Reading build commands saved in the configuration file through the BuildCommandService}]
+public static List<BuildCommand> GetBuildCommandsFromFile(string file)
+{
+    List<BuildCommand> buildCommands = new List<BuildCommand>();
+
+    BuildCommand buildCommand = null;
+
+    string token = null;
+
+    using (var textReader = File.OpenText(AppDomain.CurrentDomain.BaseDirectory + file))
+    {
+        JsonTextReader jsonTextReader = new JsonTextReader(textReader);
+
+        while (jsonTextReader.Read())
+        {
+            if (jsonTextReader.Value != null)
+            {
+                if (jsonTextReader.TokenType == JsonToken.PropertyName)
+                {
+                    token = jsonTextReader.Value.ToString();
+                }
+                else if (jsonTextReader.TokenType == JsonToken.String)
+                {
+                    if (token == "name")
+                    {
+                        buildCommand = new BuildCommand();
+                        buildCommand.BuildCommandName = jsonTextReader.Value.ToString();
+                    }
+                    else if (token == "command")
+                    {
+                        buildCommand.BuildCommandCmd = jsonTextReader.Value.ToString();
+                        buildCommands.Add(buildCommand);
+                    }
+                }
+            }
+        }
+    }
+
+    return buildCommands;
+}
+\end{lstlisting}
+
+The \texttt{JsonTextReader} class is part of the Newtonsoft.Json library. Based on the logic above, the service only reads tokens tagged "name" and "command", as build commands are groups of user-given names and the command that needs to be executed. The values from each group get saved in \texttt{BuildCommand} objects, that only have two fields defined for each token.
+
+An example of a build.json file can be found below:
+
+\begin{lstlisting}[language=json, caption={Structure of the JSON-formatted build commands file in Pie}]
+[
+  {
+    "name": "gcc build",
+    "command": "gcc -Wall -o output $FILE"
+  },
+  {
+    "name": "java compile",
+    "command": "javac $FILE"
+  },
+  {
+    "name": "java run main class",
+    "command": "java Main"
+  }
+]
+\end{lstlisting}
+
+When the commands get executed from Pie's user interface, the \texttt{\textdollar{}FILE} placeholder gets replaced with the absolute path of the file opened in the selected tab.
+
+Services such as the build command service do not come with file reading functionality only. They also offer an API that writes configuration objects into .json files. Such a feature will allow users to modify configuration data directly from Pie's interface, instead of manually editing files. The \texttt{BuildCommandService.WriteBuildCommandsToFile} maps a \texttt{List<BuildCommand>} object to a serialized JSON structure. This structure will be written over the existent data that relies in config/build.json.
+
+\begin{lstlisting}[language=csharp, caption={Serializing build command configuration data into a JSON structure}]
+public static void WriteBuildCommandsToFile(string file, List<BuildCommand> tempCommands)
+{
+    File.WriteAllText(AppDomain.CurrentDomain.BaseDirectory + file, "");
+
+    TextWriter textWriter = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + file);
+
+    using (JsonWriter writer = new JsonTextWriter(textWriter))
+    {
+        writer.Formatting = Formatting.Indented;
+
+        writer.WriteStartArray();
+
+        foreach (BuildCommand buildCommand in tempCommands)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("name");
+            writer.WriteValue(buildCommand.BuildCommandName);                    
+            writer.WritePropertyName("command");
+            writer.WriteValue(buildCommand.BuildCommandCmd);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+    }
+}
+\end{lstlisting}
+
+Whenever the user accesses the build commands, the objects loaded into the global variable will be displayed in an \texttt{ObjectListView} control. Users can add/remove commands, and they can also edit existing ones. After making modifications to the build commands, they get modified internally, and when the user chooses to save the changes, the modifications also get transferred to the \texttt{config/build.json} file.
+
+This is how the configuration data is persisted in Pie. I have presented only the management logic for the build commands, but the same is applied for the database connections, git credentials, themes and additional flags (autocomplete, autosave). All of them are stored in .json files, as key-value pairs that get read and overwritten when users do modifications.
+
+\section{Theming Pie: Propagating custom colors to all controls}
+
+As specified in the previous section, themes get processed exactly as the build commands. However, they provide more keys, and the values are comma-delimited strings of RGB (red, green, blue) colors. This is a snippet from a JSON-formatted theme configuration file of Pie:
+
+\begin{lstlisting}[language=json, caption={Theme configuration example in Pie}]
+{
+	"Primary": "35, 39, 56",
+	"Secondary": "46, 52, 73",
+	"Button": "67, 77, 107",
+	"ButtonHover": "80, 91, 128",
+	"Fore": "237, 238, 255",
+	"FormBorder": "60, 64, 95",
+	"Selection": "88, 94, 118",
+	"CaretLineBack": "48, 54, 78",
+	"NumberMargin": "36, 42, 63",
+	"Folding": "46, 52, 73",
+	"Comment": "63, 71, 102",
+    "String": "235, 153, 87",
+	"Operator": "250, 234, 110",
+    "IconType": "light",
+    (...)
+}
+\end{lstlisting}
+
+Each theme has its own configuration file, stored in \texttt{config/themes/theme-name.json}. There are several pre-defined theme configurations that can be used as templates to create new themes. It can be observed that theme configuration provides color schemes for all of Pie's controls, starting from the form ("Fore" and "FormBorder"), to the syntax highlighting in Scintilla ("Comment", "String" and "Operator").
+
+The current selected theme is stored in the \texttt{config/themes.json} file, and it gets overwritten (internally, and then externally) whenever the user picks another theme. The current theme is stored as a Global variable. All of the form controls are part of the KryptonSuite and can have a \texttt{KryptonPallete} object attached to them. This global pallete instance attaches the scheme of the selected theme to certain colors of the controls such as the border color, background color, fore color and hover color.
+
+The color processing is done in each form's constructor, before it gets displayed on screen, in order to avoid inconsistencies.
+
+\begin{lstlisting}[language=csharp, caption={The constructor of AboutForm, setting colors defined in the global color palette instance to each control present in the form}]
+public AboutForm()
+{
+    InitializeComponent();
+    this.Palette = Globals.kryptonPalette;
+    kryptonPanel1.Palette = Globals.kryptonPalette;
+    kryptonLabel1.Palette = Globals.kryptonPalette;
+    kryptonLabel2.Palette = Globals.kryptonPalette;
+    kryptonLabel3.Palette = Globals.kryptonPalette;
+    kryptonButton1.Palette = Globals.kryptonPalette;
+    kryptonButton2.Palette = Globals.kryptonPalette;
+}
+\end{lstlisting}
+
+The \texttt{ChangeTheme()} method that gets triggered when the user picks a new theme from the top menu strip is presented below:
+
+\begin{lstlisting}[language=csharp, caption={The ChangeTheme() method extracts the color scheme definition of a certain theme and sets its corresponding colors to Pie's global Palette control}]
+public void ChangeTheme(string theme)
+{
+    // Explained separately
+    ControlHelper.SuspendDrawing(this);
+
+    Globals.theme = theme;
+
+    // Explained separately
+    Globals.colorDictionary = ThemeService.GetColorDictionary(theme);
+
+    // The selected theme is persisted for when the user reopens the application
+    ThemeService.WriteThemeToFile("config/theme.json", Globals.theme);
+
+    // Find which tabs have a Scintilla editor and change their colors too
+    for (int i = 0; i < tabControl.Pages.Count; i++)
+    {
+        if (Globals.tabInfos[i].getTabType() == TabType.CODE)
+        {
+            KryptonPage kryptonPage = tabControl.Pages[i];
+            Scintilla scintilla = (Scintilla)kryptonPage.Controls[0];
+            (...)
+
+            if (Globals.tabInfos[i].getOpenedFilePath() != null)
+            {
+                // If a file is opened, also change the syntax highlighting color and the color of the autocomplete menu
+                string extension = ParsingService.GetFileExtension(Globals.tabInfos[i].getOpenedFilePath());
+                ColorizeTextArea(scintilla);
+                ColorizeAutocompleteMenu(Globals.tabInfos[i].getAutocompleteMenu());
+                (...)
+            }
+            else
+            {
+                // If no file is opened, only change the background number margin and code folding color of Scintilla
+                ColorizeTextArea(scintilla);
+            }
+        }
+    }
+
+    // Also change the colors of the Palette
+    ThemeService.SetPaletteToTheme(kryptonPalette, Globals.theme);
+    (...)
+
+    ControlHelper.ResumeDrawing(this);
+    this.RedrawNonClient();
+}
+\end{lstlisting}
+
+The \texttt{ControlHelper.SuspendDrawing()} and \texttt{ControlHelper.ResumeDrawing()} methods freeze the UI thread until all of the colors have been changed, in order to display the modification consistently between all of Pie's components. 
+
+On application start, all themes are read into memory, together with their color scheme definitions, stored in a \texttt{Dictionary<string, Color>} map. The \texttt{ThemeService.GetColorDictionary()} mentioned in the snippet above iterates over the internally-saved themes and extracts the dictionary from the theme name provided as an argument. The dictionary is then saved as a global variable, because it is going to be heavily used in the future, and iterating over an entire list of themes more than one time can significantly reduce runtime performance.
+
+\begin{lstlisting}[language=csharp, caption={ThemeService.SetPaletteToTheme() maps a color dictionary to corresponding control components from a KryptonPalette control}]
+public static void SetPaletteToTheme(KryptonPalette kryptonPalette, string theme)
+{
+    kryptonPalette.Common.StateCommon.Back.Color1 = Globals.colorDictionary["Secondary"];
+    kryptonPalette.Common.StateCommon.Back.Color2 = Globals.colorDictionary["Secondary"];
+    kryptonPalette.Common.StateCommon.Border.Color1 = Globals.colorDictionary["Secondary"];
+    kryptonPalette.Common.StateCommon.Border.Color2 = Globals.colorDictionary["Secondary"];
+    (...)
+}
+\end{lstlisting}
+
+\section{Tab management in the code editor}
+
+Pie displays different dialogs in tabs. The tab managegement logic is provided mostly by the \texttt{KryptonDockableNavigator}, which is a wrapper over WinForms' native \texttt{TabControl} component, with similar functionality. Most of the tab functionalities can be triggered through the context menu (right click on one of the tabs), or by pressing a certain key combination.
+
+\begin{lstlisting}[language=csharp, caption={An event listener that catches tab-related key bindings in Pie}]
+private void keyDownEvents(object sender, KeyEventArgs e)
+{
+    (...)
+    if (e.KeyCode == Keys.T && e.Modifiers == Keys.Control)
+    {
+        NewTab(TabType.CODE, null);
+        e.SuppressKeyPress = true;
+    }
+    else if (e.KeyCode == Keys.W && e.Modifiers == Keys.Control)
+    {
+        CloseTab();
+    }
+    (...)
+}
+\end{lstlisting}
+
+The \texttt{NewTab()} method instantiates a new \texttt{KryptonPage} object (Krypton's implementation of the \texttt{TabPage} in .NET), and provides as the first argument a \texttt{TabType} enum, that can be of type CODE, GIT, RENDER\_HTML or RENDER\_MD. The code snippet from above creates a new tab of type CODE. The snippet below presents the implementation of \texttt{NewTab()}:
+
+\begin{lstlisting}[language=csharp, caption={Implementation of the NewTab() method for CODE tabs}]
+public void NewTab(TabType tabType, String path)
+{
+    // Create a new tab
+    KryptonPage kryptonPage = new KryptonPage();
+    kryptonPage.Text = "Untitled";
+    kryptonPage.ToolTipTitle = kryptonPage.Text;
+
+    // openedFilePath will only get initialised if the created tab is of RENDER\_* type
+    string openedFilePath = null;
+    AutocompleteMenu autocompleteMenu = null;
+
+    if (tabType == TabType.CODE)
+    {
+        // Create a Scintilla editor and attach it to the tab page
+        Scintilla TextArea = CreateNewTextArea();
+        kryptonPage.Controls.Add(TextArea);
+        // Initialize the autocomplete menu and attach it to the Scintilla editor
+        autocompleteMenu = InitializeAutocompleteMenu(TextArea);
+    }
+    (...)
+
+    // Insert the tab next to the currently selected tab
+    int index = tabControl.Pages.Count <= 0 ? 0 : tabControl.SelectedIndex+1;
+
+    tabControl.Pages.Insert(tabControl.SelectedIndex+1, kryptonPage);
+    tabControl.SelectedPage = kryptonPage;
+
+    // Create a new TabInfo object and add it to the list of tabs
+    TabInfo tabInfo = new TabInfo(openedFilePath, false, tabType, autocompleteMenu);
+    Globals.tabInfos.Insert(index, tabInfo);
+    
+    (...)
+}
+\end{lstlisting}
+
+The \texttt{TabInfo} object holds metadata about Pie's opened tabs. This data is accessed in different parts of the code. Every time a new tab is created, a new \texttt{TabInfo} instance will be added to a list, at the same \texttt{i} index as the tab in the tab manager.
+
+\begin{lstlisting}[language=csharp, caption={An event listener that catches tab-related key bindings in Pie}]
+public class TabInfo
+{
+    // CODE, GIT, RENDER_MD or RENDER_HTML
+    private TabType tabType;
+
+    // Instance of the Autocomplete object, if the tab is of type CODE
+    private AutocompleteMenu autocompleteMenu;
+
+    // Flags for CODE tabs
+    private bool openedFileChanges;
+    private string openedFilePath;
+
+    // Getters and setters
+    (...)
+}
+\end{lstlisting}
+
+The \texttt{openedFileChanges} flag is set for each CODE tab on true, whenever the user inserts or removes a character from the original file. If the file gets saved, the flag gets set on \texttt{false}. When a tab is closed, the logic checks first if \texttt{openedFileChanges} is true and asks the user if they want to save their changes.
+
+The \texttt{openedFilePath} will get modified if the user saves the file at a certain path (Ctrl + S or navigating to "File" and choosing "Save"). The path of the file will be stored internally, in order to analyze certain aspects such as the file extension, and update Scintilla's syntax highlighting for that specific tab. The snippet below presents the implementation \texttt{Save()} method, that uses the tab metadata in its logic.
+
+\begin{lstlisting}[language=csharp, caption={Pie's implementation of the Save() method, that gets triggered whenever the user wants to save a file inside a CODE tab}]
+public void Save(int openedTabIndex)
+{
+    if (Globals.tabInfos[openedTabIndex].getOpenedFilePath() == null)
+    {
+        // If no file has yet been saved initially, let the user pick a path for their file. SaveAs() opens a SaveFileDialog before updating tab metadata and then writes to the output file
+        SaveAs(openedTabIndex);
+    }
+    else
+    {
+        // A path is already kept in memory on the i-th position. The file should be saved in the same place
+        string chosenPath = Globals.tabInfos[openedTabIndex].getOpenedFilePath();
+
+        // Save the file
+        TextWriter txt = new StreamWriter(chosenPath);
+        Scintilla TextArea = (Scintilla)tabControl.Pages[openedTabIndex].Controls[0];
+        txt.Write(TextArea.Text);
+        txt.Close();
+
+        // Changed the title of the saved tab from "Untitled" to the name of the file
+        tabControl.Pages[openedTabIndex].Text = ParsingService.GetFileName(chosenPath);
+
+        // Get the extension of the saved file and update Scintilla's lexer accordingly
+        string fileName = ParsingService.GetFileName(Globals.tabInfos[openedTabIndex].getOpenedFilePath());
+        string extension = ParsingService.GetFileExtension(fileName);
+        ScintillaLexerService.SetLexer(extension, TextArea, tabControl, openedTabIndex);
+    }
+
+    // Additional menu item toggling logic goes here
+    (...)
+}
+\end{lstlisting}
+
+\section{Syntax highlighting in ScintillaNET}
+
+ScintillaNET provides several predefined lexers that allow stylization of language-specific tokens such as reserved keywords, braces and operators. The \texttt{LexerService} class provides syntax highlighting for various languages, combining pre-defined lexers with a list of custom keywords. For example, ScintillaNET doesn't come with a vanilla Java style, but it does provide C++ support. Their syntax is very similar though: both Java and C++ use braces to define an inner scope, they have the same syntax for if statements, and their operators are very similar. The biggest difference is at the keyword level. In this manner, the Java language support in Pie uses Scintilla's C++ lexer, together with a list of reserved keywords, extracted from Oracle's Java documentation.
+
+\begin{lstlisting}[language=csharp, caption={The ConfigureLexer() method, that gets called whenever the user opens a new file or changes Pie's theme}]
+public static void ConfigureLexer(string language, Scintilla scintilla, KryptonDockableNavigator tabControl, int index)
+{
+    (...)
+    
+    if (language == "java")
+    {
+        // Define token highlighting for C++
+        scintilla.Lexer = Lexer.Cpp;
+
+        // Map current color dictionary to Scintilla's highlighting
+        scintilla.Styles[ScintillaNET.Style.Cpp.Default].ForeColor = parserColorDictionary["Default"];
+        scintilla.Styles[ScintillaNET.Style.Cpp.Comment].ForeColor = parserColorDictionary["Comment"];
+        scintilla.Styles[ScintillaNET.Style.Cpp.Number].ForeColor = parserColorDictionary["Number"];
+        scintilla.Styles[ScintillaNET.Style.Cpp.Word].ForeColor = parserColorDictionary["Word"];
+        scintilla.Styles[ScintillaNET.Style.Cpp.Word2].ForeColor = parserColorDictionary["Word2"];
+        scintilla.Styles[ScintillaNET.Style.Cpp.String].ForeColor = parserColorDictionary["String"];
+        scintilla.Styles[ScintillaNET.Style.Cpp.Operator].ForeColor = parserColorDictionary["Operator"];
+        scintilla.Styles[ScintillaNET.Style.Cpp.Preprocessor].ForeColor = parserColorDictionary["Preprocessor"];
+        
+        (...)
+
+        // Add Java keywords
+        string keywordSet1 = "abstract break case catch continue default do else extern false finally for native super extends final native transient volatile implements synchronized if instanceof import package interface new null private protected public record return sizeof switch this throw throws true try while";
+        string keywordSet2 = "boolean Boolean byte Byte char Character class double Double enum float Float int Integer long Long short Short static String void";
+
+        scintilla.SetKeywords(0, keywordSet1);
+        scintilla.SetKeywords(1, keywordSet2);
+
+        // Also initialize the autocomplete menu with the list of keywords
+        string combined = keywordSet1 + " " + keywordSet2;
+        string[] combinedArray = combined.Split(' ');
+        SetAutocompleteMenuKeywords(Globals.tabInfos[index].getAutocompleteMenu(), combinedArray.ToList());
+
+        EnableFolding(scintilla);
+    }
+
+    (...)
+}
+\end{lstlisting}
+
+There are two colors defined for reserved keywords. Variable types (\texttt{keywordSet2}) and statements (\texttt{keywordSet1}) have different colors that are mentioned in the "Word" and "Word2" keys in the JSON-formatted theme configuration files. This has been implemented for better code comprehension.
+
+Defining a new language in Pie would require modification of the \texttt{ConfigureLexer()} method to support it. A list of keywords needs to be defined (usually by looking at the language's official documentation), and a Lexer needs to be provided. As several languages have similar syntax, being built based on each other (such as the C, C++ and C\# suite), an existent lexer can be used. However, other languages such as COBOL or Lisp would require defining a new lexer and providing some custom parsing logic. Such an action can take hours, or even days to implement for a single programmer.
+
+\section{Initiating database connections and sending queries}
+
+Similar to the build commands logic, database connections are also stored in .json files. The code snippet below displays an example of a configuration file containing metadata about one database connection. 
+
+\begin{lstlisting}[language=json, caption={Structure of the JSON-formatted database connections file in Pie}]
+[
+  {
+    "connectionName": "Local MySQL Database",
+    "databaseType": "MySQL",
+    "hostname": "localhost",
+    "port": 3306,
+    "databaseName": "mydb",
+    "username": "root",
+    "password": "admin"
+  }
+]
+\end{lstlisting}
+
+The \texttt{connectionName} parameter represents a custom name that will make the database connection easier to find in the list. The \texttt{databaseType} influences the driver that is going to be used when initializing the connection with the server. The other parameters are directly used in the connection string of the database.
+
+Connectivity is managed through the \texttt{DatabaseService} class. Users are able to check if the connection has been established successfully, before interrogating tables inside the database. The \texttt{CheckDatabaseConnection()} method presented in the following code snippet maps a database type to its corresponding driver, creates the connection string and calls the \texttt{AttemptConnection} method, that tries to establish a connection with the server. The abstractized way of implementing database connectors in C\# provides good extendability here, as all three driver types implement the \texttt{IDbConnection} interface.
+
+\begin{lstlisting}[language=csharp, caption={The CheckDatabaseConnection() method that tries to initiate a connection with a specific database server based on user-defined parameters}]
+public static DatabaseResponse CheckDatabaseConnection(DatabaseType databaseType, string hostname, int port, string databaseName,  string username, string password)
+{
+    if (databaseType == DatabaseType.MySQL)
+    {
+        string myConnectionString = "server=" + hostname + ";port=" + port + ";database=" + databaseName + ";uid=" + username + ";pwd=" + password + ";";
+        return AttemptConnection(new MySqlConnection(myConnectionString));
+    }
+    else if (databaseType == DatabaseType.MSSQL)
+    {
+        SqlConnectionStringBuilder connectionStringBuilder = new SqlConnectionStringBuilder()
+        {
+            DataSource = hostname + "," + port,
+            InitialCatalog = databaseName,
+            UserID = username,
+            Password = password
+        };
+
+        return AttemptConnection(new SqlConnection(connectionStringBuilder.ConnectionString));
+    }
+    else if (databaseType == DatabaseType.PostgreSQL)
+    {
+        string strConnString = "Server=" + hostname + ";Port=" + port + ";User Id=" + username + ";Password=" + password + ";Database=" + databaseName;
+        return AttemptConnection(new NpgsqlConnection(strConnString));
+    }
+
+    return null;
+}
+
+private static DatabaseResponse AttemptConnection(IDbConnection connection)
+{
+    try
+    {
+        connection.Open();
+        connection.Close();
+        return new DatabaseResponse(true, null);
+    }
+    catch (DbException ex)
+    {
+        return new DatabaseResponse(false, ex.InnerException.Message);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return new DatabaseResponse(false, ex.Message);
+    }
+}
+\end{lstlisting}
+
+The returned \texttt{DatabaseResponse} class provides data and metadata about the database interaction process. \texttt{Success} is set on true if no exceptions have been thrown during the interaction with the database. \texttt{Message} will contain more details about the exception, if any error occured. The \texttt{DataTable} object will be used when interrogating databases and contains the output of the SQL query sent to the server.
+
+\begin{lstlisting}[language=csharp, caption={The DatabaseResponse class}]
+public class DatabaseResponse
+{
+    public bool Success { get; private set; }
+    public string Message { get; private set; }
+    public DataTable DataTable { get; private set; }
+
+    public DatabaseResponse(bool success, string message)
+    {
+        Success = success;
+        Message = message;
+    }
+
+    public DatabaseResponse(bool success, string message, DataTable dataTable)
+    {
+        Success = success;
+        Message = message;
+        DataTable = dataTable;
+    }
+}
+\end{lstlisting}
+
+Running queries on a database connection is a similar process, only that besides returning connection metadata, the service also returns the output of the execution in a \texttt{DataTable} object.
+
+\begin{lstlisting}[language=csharp, caption={The ExecuteSQLCommand() that sends a query to a database server}]
+public static DatabaseResponse ExecuteSQLCommand(string query, DatabaseConnection databaseConnection)
+{
+    DataTable dt = new DataTable();
+
+    if (databaseConnection.DatabaseType == DatabaseType.MySQL)
+    {
+        string myConnectionString = "server=" + databaseConnection.Hostname + ";port=" + databaseConnection.Port + ";database=" + databaseConnection.DatabaseName + ";uid=" + databaseConnection.Username + ";pwd=" + databaseConnection.Password + ";";
+        MySqlConnection cnn = new MySqlConnection(myConnectionString);
+        try
+        {
+            cnn.Open();
+
+            MySqlCommand cmd = new MySqlCommand(query, cnn);
+
+            MySqlDataAdapter sda = new MySqlDataAdapter(cmd);
+            sda.Fill(dt);
+
+            cnn.Close();
+
+            if (dt.Columns.Count == 0)
+            {
+                return new DatabaseResponse(false, "No columns returned.", null);
+            }
+
+            return new DatabaseResponse(true, null, dt);
+        }
+        catch (DbException ex)
+        {
+            if (ex.InnerException != null)
+            {
+                return new DatabaseResponse(false, ex.InnerException.Message, null);
+            }
+            else
+            {
+                return new DatabaseResponse(false, ex.Message, null);
+            }
+        }
+    }
+
+    (...)
+}
+\end{lstlisting}
+
+After executing a query, a Form control of type \texttt{DatabaseOutputForm} will be displayed, containing a \texttt{KryptonDataGridView} element. The \texttt{DataTable} object returned through the \texttt{DatabaseResponse} will be set as a source of the grid view, allowing users to see the output in a formatted table, similar to modern database visualizers.
+
+\section{Advanced VCS management with LibGit2Sharp}
+
+Git repository management is done from a separate tab inside the main form. Users are able to select a path of their local repository, that is later stored in a global variable, initialized using the LibGit2Sharp library:
+
+\begin{lstlisting}[language=csharp, caption={Using LibGit2Sharp to scan a local repository provided as a path}]
+Globals.repo = new Repository(path);
+\end{lstlisting}
+
+The \texttt{RetrieveGitItemsForCurrentBranch()} is called when the user opens a repository for the first time, or refreshes the status of the currently opened repository.
+
+\begin{lstlisting}[language=csharp, caption={The RetrieveGitItemsForCurrentBranch() method that retrieves the status of all files located in a selected repository and displays them in an ObjectListView control}]
+private void RetrieveGitItemsForCurrentBranch()
+{
+    StatusOptions statusOptions = new StatusOptions();
+    statusOptions.IncludeUnaltered = true;
+
+    // Will be used for displaying file info in an ObjectListView
+    List<GitFile> gitFileList = new List<GitFile>();
+
+    // Use LibGit2Sharp to retrieve file status for all files in the repository
+    foreach (var item in Globals.repo.RetrieveStatus(statusOptions))
+    {
+        // Now map each file status to a GitFile element
+        GitFile gitFile = new GitFile();
+        gitFile.Name = item.FilePath;
+
+        if (item.State == FileStatus.DeletedFromWorkdir)
+        {
+            gitFile.Status = "Deleted";
+        }
+        else if (item.State == FileStatus.Ignored)
+        {
+            gitFile.Status = "Ignored";
+        }
+        else if (item.State == FileStatus.ModifiedInIndex || item.State == FileStatus.ModifiedInWorkdir)
+        {
+            gitFile.Status = "Modified";
+        }
+        else if (item.State == FileStatus.NewInIndex || item.State == FileStatus.NewInWorkdir)
+        {
+            gitFile.Status = "New";
+        }
+        else
+        {
+            gitFile.Status = item.State.ToString();
+        }
+
+        gitFileList.Add(gitFile);
+    }
+
+    // Add the metadata to the ObjectListView located in the Git tab
+    gitStagingAreaListView.SetObjects(gitFileList);
+}
+\end{lstlisting}
+
+Commiting items to the repository is also done mostly through LibGit2Sharp's API. Additionally, I have provided several validations, in order to make sure that the user does what they intended to. Before the commit, Pie checks if the status of the repository is actually "dirty", meaning that files are changed in the staging area. If this is true, the application moves on with staging the files. It will then check if commit credentials have been provided and if not, the user is prompted to provide them. LibGit2Sharp will then handle the upcoming process by creating a signature with the user's information and initiating the commit.
+
+\begin{lstlisting}[language=csharp, caption={Commiting to a repository using LibGit2Sharp}]
+private void GitCommit(string items)
+{
+    if (Globals.repo != null)
+    {
+        RepositoryStatus status = Globals.repo.RetrieveStatus();
+
+        // If there are modified files in the staging area, proceed with the commit
+        if (status.IsDirty)
+        {
+            // If not all files have been selected, call another overloaded version of Stage()
+            if (items != "*")
+            {
+                List<string> files = items.Split(' ').ToList();
+
+                Commands.Stage(Globals.repo, files);
+            }
+            else
+            {
+                // Simply commit all files
+                Commands.Stage(Globals.repo, items);
+            }
+
+            // If no credentials have been provided, prompt the user to type in their name and email address
+            if (string.IsNullOrEmpty(Globals.gitCredentials.Name) || string.IsNullOrEmpty(Globals.gitCredentials.Email))
+            {
+                GitCommitCredentialsForm gitCredentialsForm = new GitCommitCredentialsForm();
+                Globals.gitFormClosedWithOk = false;
+                gitCredentialsForm.ShowDialog();
+
+                if (Globals.gitFormClosedWithOk)
+                {
+                    GitService.WriteCredentials(Globals.gitCredentials);
+
+                    // Retry the commit
+                    GitCommit(items);
+                }
+            }
+            else
+            {
+                // Create a signature based on the user's credentials and run the commit
+                Signature signature = new Signature(Globals.gitCredentials.Name, Globals.gitCredentials.Email, DateTime.Now);
+
+                string commitText = commitMessageRichTextBox.Text;
+
+                Task.Run(() =>
+                {
+                    Globals.repo.Commit(commitText, signature, signature);
+                }).Wait();
+
+                (...)
+                
+                ShowNotification("Successfully commited.");
+            }
+        }
+        else
+        {
+            ShowNotification("You have nothing to commit.");
+        }
+    }
+}
+\end{lstlisting}
+
+\section{Text formatting functionality}
+
+When the user clicks on the "Format" button located on Pie's top menu strip, a \texttt{FormatForm} pops up and allows the user to search through various formatting techniques. Double-clicking on one of the options will close the form and launch the format job on the currently selected tab (mandatory of type CODE). The formatting logic is provided through the \texttt{FormattingService} class.
+
+The content of the Scintilla editor is sent to one of the service's methods that do one of the following:
+
+\begin{enumerate}
+  \item process text line by line;
+  \item process text character by character;
+  \item apply sorting algorithms.
+\end{enumerate}
+
+A commonly used line processing technique is the one that removes newline characters ('\n') and adds commas (',') after each line end. This is helpful if, for example, an output generated by a table processing product like Microsoft Excel needs to be converted to a Python list.
+
+\begin{lstlisting}[language=csharp, caption={Converting newline to commas using the ConvertNewlineToComma() method from the FormattingService class}]
+public static string ConvertNewlineToComma(string text)
+{
+    string[] lines = text.Split('\n');
+
+    for (int i = 0; i<lines.Length; i++)
+    {
+        if (lines[i].Length-1 >= 0 && lines[i][lines[i].Length-1] == '\r')
+        {
+            lines[i] = lines[i].Substring(0, lines[i].Length-1);
+        }
+    }
+
+    return lines.Aggregate((curr, next) => {
+        return curr + "," + next;
+    });
+}
+\end{lstlisting}
+
+Character processing algorithms rely mostly on trimming whitespaces and sanitizing text inputs. The \texttt{RemoveAllConsecutiveWhitespaces()} method removes additional space characters from the Scintilla editor.
+
+\begin{lstlisting}[language=csharp, caption={Removing consecutive whitespaces through the RemoveAllConsecutiveWhitespaces() method from the FormattingService class}]
+public static string RemoveAllConsecutiveWhitespaces(string text)
+{
+    string result = "";
+
+    for (int i = 0; i < text.Length; i++)
+    {
+        if (char.IsWhiteSpace(text[i]))
+        {
+            if (result.Length == 0 || !char.IsWhiteSpace(result[result.Length - 1]) || text[i] == '\n' || text[i] == '\r')
+            {
+                result += text[i];
+            }
+        }
+        else
+        {
+            result += text[i];
+        }
+    }
+
+    return result;
+}
+\end{lstlisting}
+
+Sorting lines is also a common formatting technique. It allows people to order names and other strings ascending or descending.
+
+\begin{lstlisting}[language=csharp, caption={Sorting lines ascending or descending through the SortLines() method from the FormattingService class}]
+public static string SortLines (string text, bool ascending)
+{
+    if (text.Equals(""))
+    {
+        return "";
+    }
+
+    string result = "";
+
+    List<string> lines = text.Split('\n').ToList();
+
+    lines.Sort();
+
+    if (!ascending)
+    {
+        lines.Reverse();
+    }
+
+    for(int i = 0; i<lines.Count; i++)
+    {
+        if (i == lines.Count - 1)
+        {
+            result += lines[i];
+        }
+        else
+        {
+            result += lines[i] + "\n";
+        }
+    }
+
+    if (result[result.Length - 1] == '\r')
+    {
+        return result.Substring(0, result.Length - 1);
+    }
+    else
+    {
+        return result;
+    }
+
+    return result;
+}
+\end{lstlisting}
+
+The methods will return a string, that will then overwrite the content of the selected Scintilla editor.
